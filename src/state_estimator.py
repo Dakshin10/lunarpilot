@@ -94,3 +94,4 @@ class ExtendedKalmanFilter:
         filtered_state[6:] = noisy_observation[6:]  # Legs
 
         return filtered_state
+

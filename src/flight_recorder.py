@@ -155,3 +155,4 @@ class BlackBoxRecorder:
         plt.savefig(output_path, dpi=200, facecolor=fig.get_facecolor(), edgecolor="none")
         plt.close()
         print(f"📊 Telemetry Mission Report exported to: {output_path}")
+

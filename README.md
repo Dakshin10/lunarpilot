@@ -114,6 +114,16 @@ $$F(s, a, s') = \gamma \Phi(s') - \Phi(s)$$
 
 ---
 
+## 📈 Black Box Telemetry & Mission Diagnostics
+
+The automated flight data recorder logs high-rate trajectory dynamics, propellant consumption, continuous actuator duty cycles, and Extended Kalman Filter (EKF) estimation residuals:
+
+<p align="center">
+  <img src="assets/mission_report_latest.png" alt="Black Box Telemetry Mission Report" width="100%" />
+</p>
+
+---
+
 ## 🛠️ PPO Hyperparameters
 
 | Hyperparameter | Value | Description |

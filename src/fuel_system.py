@@ -58,3 +58,4 @@ class PropellantSystem:
     @property
     def percentage(self) -> float:
         return (self.fuel / self.initial_fuel) * 100.0
+

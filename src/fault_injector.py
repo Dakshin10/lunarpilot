@@ -59,3 +59,4 @@ class FaultInjector:
                 corrupted_action[0] = corrupted_action[0] * 0.5
 
         return corrupted_action
+

@@ -34,3 +34,4 @@ class HazardDetectionSystem:
             self.active_target_x = 0.0
 
         return self.active_target_x
+
