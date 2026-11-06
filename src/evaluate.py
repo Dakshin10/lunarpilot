@@ -7,8 +7,23 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from stable_baselines3 import PPO
 from src.environment import make_env
 
-env = make_env(render_mode="human")
-model = PPO.load("models/lunarpilot_ppo")
+# Determine model to load (prefer continuous model if trained)
+continuous_model_path = Path("models/lunarpilot_ppo_continuous.zip")
+discrete_model_path = Path("models/lunarpilot_ppo.zip")
+
+if continuous_model_path.exists():
+    print("🛸 Loading Continuous Control Pilot (LunarLanderContinuous-v3)...")
+    model_path = "models/lunarpilot_ppo_continuous"
+    continuous = True
+elif discrete_model_path.exists():
+    print("🕹️ Loading Discrete Control Pilot (LunarLander-v3)...")
+    model_path = "models/lunarpilot_ppo"
+    continuous = False
+else:
+    raise FileNotFoundError("No trained model found in models/ directory!")
+
+env = make_env(render_mode="human", continuous=continuous)
+model = PPO.load(model_path)
 
 for episode in range(5):
     observation, info = env.reset()
