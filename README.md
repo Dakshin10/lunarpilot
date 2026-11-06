@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/header.svg" alt="LunarPilot: Autonomous Precision Lunar Lander" width="100%" />
+  <img src="assets/lunarpilot-banner-v4.svg" alt="LunarPilot: Autonomous Precision Lunar Lander" width="100%" />
 </p>
 
 <p align="center">
