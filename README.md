@@ -42,21 +42,84 @@ During deterministic flight evaluation over consecutive test episodes, the polic
 
 ---
 
-## 🧠 Autonomous Flight Phases
+## 🧭 Autonomous Flight Guidance Stages
+
+The pilot executes a multi-phase descent profile mirroring real spacecraft guidance logic:
 
 ```mermaid
-flowchart LR
-    A["1. Spawn & Insertion\n(y ≈ 1.4, random x drift)"] --> B["2. Lateral Steering\n(-25|x| center pull)"]
-    B --> C["3. Powered Flare\n(Vertical deceleration vy → 0)"]
-    C --> D["4. Surface Contact\n(Both legs locked on pad)"]
-    D --> E["5. Contact Light Engine Cutoff\n(Auto-shutdown: 0 thruster jitter)"]
+flowchart TD
+    Spawn["1. Spawn & Insertion\n(Altitude y ≈ 1.4, random lateral push)"] --> HighAlt["2. High-Altitude Stabilization\n(Dampen initial angular spin & stabilize pitch attitude)"]
+    HighAlt --> Lateral["3. Lateral Vectoring\n(Continuous -25|x| potential gradient pulling to pad center x = 0)"]
+    Lateral --> Flare["4. Powered Flare & Deceleration\n(Main engine throttling: brake vertical speed vy → -0.05 m/s, angle → 0.0)"]
+    Flare --> Touchdown["5. Dual-Leg Surface Contact\n(Left Leg = 1.0, Right Leg = 1.0 on flat helipad)"]
+    Touchdown --> Cutoff["6. Contact-Light Engine Cutoff\n(Instant engine kill: 0 thruster jitter, +100 pad bonus)"]
+    Cutoff --> Solved(["Mission Solved: +330 pts"])
+
+    style Spawn fill:#34495E,stroke:#2C3E50,stroke-width:2px,color:#fff
+    style HighAlt fill:#2980B9,stroke:#1F618D,stroke-width:2px,color:#fff
+    style Lateral fill:#3498DB,stroke:#2980B9,stroke-width:2px,color:#fff
+    style Flare fill:#E67E22,stroke:#D35400,stroke-width:2px,color:#fff
+    style Touchdown fill:#27AE60,stroke:#1E8449,stroke-width:2px,color:#fff
+    style Cutoff fill:#2ECC71,stroke:#27AE60,stroke-width:2px,color:#fff
+    style Solved fill:#1ABC9C,stroke:#16A085,stroke-width:2px,color:#fff
 ```
 
 ---
 
-## ⚙️ Reinforcement Learning Formulation
+## 🏗️ End-to-End System Architecture
 
-The agent utilizes an Actor-Critic architecture powered by **Proximal Policy Optimization (PPO)**.
+Closed-loop interaction between the physical simulation, reward shaping engine, and PPO neural networks:
+
+```mermaid
+flowchart TD
+    subgraph Environment["Gymnasium Simulation (LunarLander-v3)"]
+        Physics["Box2D Physics Engine\n(Gravity, Inertial Dynamics, Surface Friction)"]
+        StateObs["Observation Vector (8-dim):\n[x, y, vx, vy, θ, ω, leg_L, leg_R]"]
+        Physics --> StateObs
+    end
+
+    subgraph Wrapper["RewardShapingWrapper & Flight Rules"]
+        PotentialFunc["Potential Function Φ(s)\n-25|x| - 10|y| - 5|v| - 5|θ| + 10(legs)"]
+        ShapingCalc["Potential-Based Reward:\nF = γ Φ(s') - Φ(s)"]
+        ContactLight{"Touchdown Check:\nBoth Legs = 1.0 & |v| < 0.1"}
+        PadBoundary{"Pad Boundary Check:\n|x| ≤ 0.22"}
+        PadBonus["+100 Helipad Bonus"]
+        HillPenalty["-100 Hill Slope Penalty"]
+        TerminateFlight["Trigger terminated = True\n(Contact-Light Cutoff)"]
+
+        StateObs --> PotentialFunc --> ShapingCalc
+        StateObs --> ContactLight
+        ContactLight -->|Touchdown| TerminateFlight
+        TerminateFlight --> PadBoundary
+        PadBoundary -->|Inside Flags| PadBonus
+        PadBoundary -->|Outside Flags| HillPenalty
+    end
+
+    subgraph Agent["PPO Agent (Stable-Baselines3)"]
+        ActorNet["Actor Network π(a|s)\n(MLP: 64x64)"]
+        CriticNet["Critic Network V(s)\n(MLP: 64x64)"]
+        ActionOutput["Discrete Action Selection:\n{0: Coast, 1: Left, 2: Main, 3: Right}"]
+        RolloutBuf["Rollout Buffer (1024 Steps)"]
+        Optimization["PPO Clipped Objective (ε = 0.2)\n+ Value Loss + Entropy Bonus"]
+
+        StateObs --> ActorNet
+        StateObs --> CriticNet
+        ActorNet --> ActionOutput
+        ActionOutput --> Physics
+        ShapingCalc --> RolloutBuf
+        PadBonus --> RolloutBuf
+        HillPenalty --> RolloutBuf
+        RolloutBuf --> Optimization
+        Optimization -->|Gradient Update| ActorNet
+        Optimization -->|Gradient Update| CriticNet
+    end
+```
+
+---
+
+## ⚙️ State & Action Dynamics
+
+The agent operates over continuous kinematics and commands discrete thruster actuation.
 
 ### Observation Space (8 Dimensions)
 $$\mathbf{s} = \big[x, \; y, \; v_x, \; v_y, \; \theta, \; \omega, \; \text{leg}_{\text{left}}, \; \text{leg}_{\text{right}}\big]$$
@@ -76,10 +139,23 @@ $$\mathbf{s} = \big[x, \; y, \; v_x, \; v_y, \; \theta, \; \omega, \; \text{leg}
 
 ## 🔬 Reward Shaping & Solving Classic RL Traps
 
-Vanilla reinforcement learning on lunar descent frequently encounters two failure modes:
+Vanilla reinforcement learning on lunar descent frequently encounters two catastrophic failure modes:
+
+```mermaid
+flowchart TD
+    Airborne["Lander In Flight (Altitude y > 0)"] --> PolicyPath{"Agent Policy Strategy"}
+
+    PolicyPath -->|"Strategy A: Hover in Mid-Air\n(The Cowardly Hoverer Trap)"| HoverResult["• Constant fuel burn penalty (-0.3/step)\n• Zero descent incentive\n• Step timeout at step 1,000\n❌ Result: Truncated (Return ≈ -120 pts)"]
+    PolicyPath -->|"Strategy B: Settle for Side Hills\n(The Lazy Hill Exploit)"| HillResult["• Base game gives +100 for resting\n• Custom wrapper cancels bonus with -100 penalty\n• Rover tilts on bumpy slope\n❌ Result: Sub-optimal (Return ≈ 0 pts)"]
+    PolicyPath -->|"Strategy C: Precision Center Landing\n(The Optimal Policy)"| PadResult["• Positive shaping gradient ΔΦ > 0 all the way down\n• Base game +100 + Custom wrapper +100 bonus\n• Contact-light engine cutoff on touchdown\n✅ Result: Solved (Return ≈ +330 to +426 pts)"]
+
+    style PadResult fill:#2ECC71,stroke:#27AE60,stroke-width:2px,color:#fff
+    style HoverResult fill:#E74C3C,stroke:#C0392B,stroke-width:2px,color:#fff
+    style HillResult fill:#E67E22,stroke:#D35400,stroke-width:2px,color:#fff
+```
 
 ### 1. The "Cowardly Hoverer" Trap
-When naive reward functions heavily penalize downward speed ($v_y$) or crashes without properly incentivizing descent, the agent discovers that attempting to land is a hazard. The policy converges to a sub-optimal local minimum: **hovering motionless at altitude $y \approx 1.0$ until the 1,000-step time limit expires**.
+When naive reward functions heavily penalize downward speed ($v_y$) or crashes without properly incentivizing descent, the agent discovers that attempting to touch the surface is hazardous. The policy converges to a sub-optimal local minimum: **hovering motionless at altitude $y \approx 1.0$ until the 1,000-step time limit expires**.
 
 ### 2. The "Lazy Hill Landing" Exploit
 In default `LunarLander-v3`, coming to rest anywhere on the surface awards $+100$, even on the rough mountains outside the pad. If the agent spawns with lateral drift, it settles for touching down on the nearest hill slope ($x \approx 0.5$) rather than expending fuel to fight inertia and steer back to the flags.
@@ -120,7 +196,7 @@ $$F(s, a, s') = \gamma \Phi(s') - \Phi(s)$$
 
 ### 1. Installation
 ```powershell
-git clone https://github.com/your-username/lunarpilot.git
+git clone https://github.com/Dakshin10/lunarpilot.git
 cd lunarpilot
 pip install -r requirements.txt
 ```
