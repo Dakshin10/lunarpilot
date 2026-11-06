@@ -15,11 +15,11 @@
 ## 🎥 Live Landing Demo
 
 <p align="center">
-  <video src="assets/demo.mp4" width="100%" controls autoplay loop muted playsinline>
-    Your browser does not support the video tag.
-  </video>
+  <img src="assets/gif_demo.gif" alt="LunarPilot Autonomous Landing Sequence" width="100%" />
   <br />
   <em>Autonomous landing sequence: high-altitude drift correction, powered flare, dual-leg touchdown, and instantaneous engine cutoff.</em>
+  <br /><br />
+  📽️ <strong><a href="assets/demo.mp4">Watch Full Quality Video (assets/demo.mp4)</a></strong>
 </p>
 
 ---
