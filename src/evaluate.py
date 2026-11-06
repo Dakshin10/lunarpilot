@@ -52,15 +52,22 @@ for episode in range(5):
         observation, reward, terminated, truncated, info = env.step(action)
         total_reward += reward
 
-    # Retrieve true state from unwrapped environment for post-flight telemetry
-    x, y, vx, vy, angle, angular_velocity, left_leg, right_leg = env.unwrapped.last_true_state if hasattr(env, "unwrapped") and hasattr(env.unwrapped, "last_true_state") else observation
+    # Retrieve true state from avionics suite for accurate post-flight telemetry
+    if hasattr(env, "last_true_state"):
+        x, y, vx, vy, angle, angular_velocity, left_leg, right_leg = env.last_true_state
+    elif hasattr(env, "unwrapped") and hasattr(env.unwrapped, "last_true_state"):
+        x, y, vx, vy, angle, angular_velocity, left_leg, right_leg = env.unwrapped.last_true_state
+    else:
+        x, y, vx, vy, angle, angular_velocity, left_leg, right_leg = observation
 
     # Flags are at x = +-0.20; accounting for the lander's physical width, <= 0.22 touches the pad
     between_flags = abs(x) <= 0.22
+    touchdown = (left_leg == 1.0 and right_leg == 1.0) or (
+        (left_leg == 1.0 or right_leg == 1.0) and y <= 0.05
+    )
     landed = (
         between_flags
-        and left_leg == 1.0
-        and right_leg == 1.0
+        and touchdown
         and abs(vx) < 0.2
         and abs(vy) < 0.2
         and abs(angle) < 0.2

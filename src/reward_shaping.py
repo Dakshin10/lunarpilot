@@ -38,14 +38,23 @@ class RewardShapingWrapper(gym.Wrapper):
         shaping_reward = self.gamma * current_potential - self.previous_potential
 
         x = observation[0]
+        y = observation[1]
         vx = observation[2]
         vy = observation[3]
+        angle = observation[4]
         left_leg = observation[6]
         right_leg = observation[7]
 
-        # Contact light / Engine cutoff: If both legs make contact and velocity is zero,
-        # conclude touchdown immediately instead of letting the agent stay awake puffing thrusters.
-        if left_leg == 1.0 and right_leg == 1.0 and abs(vx) < 0.1 and abs(vy) < 0.1:
+        # Contact light / Engine cutoff:
+        # If the vehicle has touched down (either both legs grounded, or one leg firmly
+        # planted with body settled at surface y <= 0.05) and velocities are near zero,
+        # conclude touchdown immediately.
+        is_grounded = (left_leg == 1.0 and right_leg == 1.0) or (
+            (left_leg == 1.0 or right_leg == 1.0) and y <= 0.05
+        )
+        is_stable = abs(vx) < 0.15 and abs(vy) < 0.15 and abs(angle) < 0.2
+
+        if is_grounded and is_stable:
             terminated = True
 
         # Terminal bonus/penalty to ensure landing happens strictly between the flags
