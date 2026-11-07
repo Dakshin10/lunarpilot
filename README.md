@@ -53,34 +53,214 @@ During deterministic flight evaluation over 10 consecutive test episodes, the po
 
 ---
 
-## 🛡️ Spacecraft Structural Health & Damage Minimization
+## 🏛️ End-to-End System Architecture
 
-Real spacecraft landing gears are vulnerable to structural shear, joint torque, and suspension bottoming out. LunarPilot introduces a **Structural Health & Damage Model** that tracks mechanical load in real-time across four critical flight metrics:
+The LunarPilot architecture establishes a closed-loop cyber-physical flight system linking realistic Box2D multi-body dynamics, a 5-subsystem avionics stack, a continuous PPO actor-critic network, and a potential-based reward shaping wrapper:
 
-1. **Touchdown Kinetic Energy Shock ($E_k \propto \frac{1}{2}m v^2$):** Penalizes high vertical and horizontal touchdown velocities to cushion strut compression.
-2. **Ground Skid Friction Shear ($\propto |v_x|$):** Penalizes lateral drift at touchdown, preventing foot-pad scrubbing and revolute joint shear stress.
-3. **Asymmetric Touchdown Torque ($\propto |\theta| + |\omega|$):** Penalizes tilted touchdowns, compelling level wings ($\theta \approx 0^\circ$) so both legs contact simultaneously rather than slamming a single strut.
-4. **Parabolic Centering Attraction:** Funnels the craft toward dead-center ($x = 0.00$) without sacrificing touchdown softness.
+<p align="center">
+  <img src="assets/End-to-End System Architecture.png" alt="End-to-End System Architecture" width="100%" />
+</p>
 
-### Multi-Criteria Reward Balancing
-To eliminate the exploit where an agent rushes into the center while slamming down sideways, the reward function values **Structural Health ($+145\text{ pts}$)** at a 3:1 ratio over pure **Centering ($+45\text{ pts}$)**:
-- **Structural Softness Score:** Up to $+70\text{ pts}$
-- **Level Attitude Touchdown Score:** Up to $+40\text{ pts}$
-- **Lateral Skid Cancellation Score:** Up to $+35\text{ pts}$
-- **Bullseye Centering Score:** Up to $+45\text{ pts}$
-- **Base Safe Landing Bonus:** $+40\text{ pts}$
+```mermaid
+flowchart TD
+    subgraph Env["Simulation Environment"]
+        B2D["Box2D Dynamics Engine: LunarLanderContinuous-v3"]
+        Physics["True Kinematic State: x, y, vx, vy, θ, ω, leg_L, leg_R"]
+        B2D --> Physics
+    end
+
+    subgraph Avionics["Avionics & Sensor Suite (src/avionics.py)"]
+        Sensors["Sensor Suite: IMU, Radar Altimeter, Beacon"]
+        EKF["Extended Kalman Filter: 8-State Estimator"]
+        Hazard["Hazard Detection: LIDAR and Retargeting"]
+        Faults["Hardware Fault Injector: Thruster Anomalies"]
+        Fuel["Propellant Management: Mass Burn and Flameout"]
+        FDR["Flight Data Recorder: Black Box Telemetry"]
+        
+        Physics --> Sensors
+        Sensors --> EKF
+        EKF --> Hazard
+    end
+
+    subgraph Policy["Guidance & Control (Stable-Baselines3 PPO)"]
+        Obs["Filtered State Observation: s_t in R8"]
+        Actor["PPO Actor-Critic Network: 2x64 MLP"]
+        Action["Continuous Control Action: Throttle and RCS"]
+        
+        Hazard --> Obs
+        Obs --> Actor
+        Actor --> Action
+    end
+
+    Action --> Faults
+    Faults --> Fuel
+    Fuel -->|"Actuator Commands (u1, u2)"| B2D
+    Physics -.-> FDR
+    Action -.-> FDR
+
+    subgraph Shaping["Reward & Vehicle Health (src/reward_shaping.py)"]
+        PBRS["Potential-Based Reward Shaping: ΔΦ = Φ(s_t+1) - Φ(s_t)"]
+        Gated["Gated Vertical Descent Potential"]
+        Well["Parabolic Centering Well: -35|x| - 75x²"]
+        Terminal["4-Tier Structural Health Terminal Bonus"]
+        
+        Physics --> PBRS
+        PBRS --> Gated
+        Gated --> Well
+        Well --> Terminal
+    end
+
+    Terminal -->|"Shaped Reward (r_t)"| Actor
+```
+
+### Architectural Dataflow Breakdown
+1. **Sensors & Estimation:** The [`SensorSuite`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/state_estimator.py#L10) injects realistic Gaussian noise into the true kinematic state. An 8-state [`ExtendedKalmanFilter`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/state_estimator.py#L35) computes filtered state estimations with dynamic covariance updates.
+2. **Autonomous Guidance:** The continuous PPO policy queries the filtered state $s_t$ to infer throttle $u_1 \in [0, 1]$ and lateral RCS $u_2 \in [-1, 1]$.
+3. **Avionics & Actuation Gate:** The [`FaultInjector`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/fault_injector.py) applies mid-flight thruster degradation, and the [`PropellantSystem`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/fuel_system.py) decrements fuel mass, instantly enforcing flameout if tank capacity reaches zero.
+4. **Reward Shaping & Cutoff:** The [`RewardShapingWrapper`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/reward_shaping.py#L5-L121) tracks potential shifts $\Delta\Phi$ and executes contact cutoff on dual-leg landing gear touchdown.
+5. **Telemetry & Black Box:** High-frequency flight states and actuator logs are streamed to the [`BlackBoxRecorder`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/flight_recorder.py) for mission evaluation and 6-panel diagnostics.
+
+---
+
+## 🚀 Autonomous Flight Guidance Stages
+
+LunarPilot executes an autonomous 4-stage descent profile, transitioning systematically from high-altitude alignment down to soft dual-strut contact cutoff:
+
+<p align="center">
+  <img src="assets/Autonomous Flight Guidance Stages_.png" alt="Autonomous Flight Guidance Stages" width="100%" />
+</p>
+
+```mermaid
+flowchart LR
+    subgraph S1["Stage 1: High-Altitude Alignment"]
+        A1["Altitude y > 0.8 m"]
+        A2["Null Horizontal Drift: vx to 0"]
+        A3["Parabolic Centering: x to x_target"]
+        A1 --> A2 --> A3
+    end
+
+    subgraph S2["Stage 2: Powered Flare Descent"]
+        B1["Altitude 0.3 m < y <= 0.8 m"]
+        B2["Throttle Modulation: vy approx -0.3 m/s"]
+        B3["Attitude Stabilization: |θ| < 5 deg"]
+        B1 --> B2 --> B3
+    end
+
+    subgraph S3["Stage 3: Precision Terminal Centering"]
+        C1["Altitude 0.05 m < y <= 0.3 m"]
+        C2["Decelerate Sink Rate: |vy| < 0.1 m/s"]
+        C3["Zero Lateral Skid: vx to 0.0 m/s"]
+        C4["Wings-Level Alignment: θ to 0.0 deg"]
+        C1 --> C2 --> C3 --> C4
+    end
+
+    subgraph S4["Stage 4: Touchdown and Engine Cutoff"]
+        D1["Dual-Leg Ground Contact"]
+        D2["Instantaneous Main and RCS Cutoff"]
+        D3["Structural Integrity Verification"]
+        D4["Pristine Landing Recorded"]
+        D1 --> D2 --> D3 --> D4
+    end
+
+    S1 --> S2 --> S3 --> S4
+```
+
+### Guidance Phase Details
+- **Stage 1 — High-Altitude Alignment ($y > 0.8\text{ m}$):** Focuses on nulling high lateral drift velocities ($v_x$) and banking the spacecraft toward the primary landing coordinates ($x = 0.00$) before committing to vertical descent.
+- **Stage 2 — Powered Flare Descent ($0.3\text{ m} < y \le 0.8\text{ m}$):** Modulates main engine throttle to establish a constant, stable sink rate ($v_y \approx -0.3\text{ m/s}$), keeping pitch within $|\theta| \le 5^\circ$ while shedding kinetic energy.
+- **Stage 3 — Terminal Precision Centering ($0.05\text{ m} < y \le 0.3\text{ m}$):** Flattens spacecraft attitude ($\theta \to 0^\circ$), cancels lateral ground skid ($v_x \to 0.0\text{ m/s}$), and cushions descent speed below $0.1\text{ m/s}$.
+- **Stage 4 — Touchdown & Engine Cutoff ($y \le 0.05\text{ m}$ / Ground Contact):** Triggers instantaneous main engine and RCS thruster shutdown upon dual-leg contact. Prevents thruster-induced bouncing, rollover torque, or structural joint overload.
+
+---
+
+## 🧠 Potential-Based Reward Shaping & Solving Classic RL Traps
+
+Standard reinforcement learning agents trained in `LunarLanderContinuous-v3` frequently fall into known behavioral failure modes. LunarPilot implements mathematically grounded **Potential-Based Reward Shaping (PBRS)** (Ng et al., 1999) to guarantee policy invariance while systematically eradicating these failure modes:
+
+<p align="center">
+  <img src="assets/Reward Shaping & Solving Classic RL Traps.png" alt="Reward Shaping & Solving Classic RL Traps" width="100%" />
+</p>
+
+```mermaid
+flowchart TD
+    subgraph Traps["Classic RL Lunar Lander Traps"]
+        T1["The 'Hoverer' Trap: Burning fuel indefinitely to farm step rewards"]
+        T2["The 'Hill Landing' Exploit: Landing on perimeter hills to avoid pad descent"]
+        T3["The 'Crash Centering' Exploit: Reckless dive into pad with severe impact"]
+    end
+
+    subgraph Solutions["LunarPilot PBRS and Health Solutions"]
+        F1["Telescoping PBRS Potential: ΔΦ = Φ(s') - Φ(s), zero reward for hovering"]
+        F2["Gated Descent Potential: Descent reward suppressed unless centered over pad"]
+        F3["4-Tier Health Evaluator: +70 softness, +40 level, +35 anti-skid, +45 bullseye"]
+    end
+
+    T1 ==>|"Eliminated By"| F1
+    T2 ==>|"Eliminated By"| F2
+    T3 ==>|"Eliminated By"| F3
+```
+
+### Mathematical Potential Formulation
+The per-step shaping reward $F(s, a, s')$ obeys telescoping potential differences:
+$$F(s, a, s') = \Phi(s') - \Phi(s)$$
+
+Where the full state potential $\Phi(s)$ is computed in [`RewardShapingWrapper.calculate_potential`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/reward_shaping.py#L10-L37):
+
+$$\Phi(s) = \Phi_{\text{horiz}}(x) + \Phi_{\text{vert}}(y, x) + \Phi_{\text{kin}}(v) + \Phi_{\text{att}}(\theta, \omega) + \Phi_{\text{contact}}$$
+
+1. **Parabolic Centering Well:**
+   $$\Phi_{\text{horiz}}(x) = -35.0\,|x| - 75.0\,x^2$$
+   Provides a steep gravitational attraction toward dead-center $x = 0.00$, overcoming lateral drift.
+
+2. **Gated Vertical Descent Potential:**
+   $$\Phi_{\text{vert}}(y, x) = -12.0\,|y| \cdot \left(0.20 + 0.80 \cdot \max(0, 1 - 4\,|x|)\right)$$
+   When the lander is far from the pad ($|x| \ge 0.25$), descent potential is suppressed by 80%. Full descent rewards are unlocked **only** when aligned over the pad, forbidding premature descent.
+
+3. **Kinetic Energy Damping & Skid Prevention:**
+   $$\Phi_{\text{kin}}(v) = -10.0\sqrt{v_x^2 + v_y^2} - 12.0\,|v_x|$$
+   Heavily penalizes total kinetic energy with focused damping on lateral velocity ($v_x$) to eliminate foot-pad scrubbing and joint shear.
+
+4. **Attitude Alignment:**
+   $$\Phi_{\text{att}}(\theta, \omega) = -16.0\,|\theta| - 4.0\,|\omega|$$
+   Forces upright attitude and damps angular oscillations.
+
+---
+
+## 🛡️ Spacecraft Structural Health & Real-Time Gear Telemetry
+
+Real spacecraft landing gears are vulnerable to structural shear, joint torque, and suspension bottoming out. LunarPilot introduces an explicit **Structural Health & Damage Model** in [`src/evaluate.py`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/evaluate.py#L22-L42) and [`src/reward_shaping.py`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/reward_shaping.py#L83-L117):
+
+$$\text{Structural Health Index } H = 100\% - D_{\text{impact}} - D_{\text{shear}} - D_{\text{attitude}}$$
+
+Where:
+- **Impact Shock Damage:** $D_{\text{impact}} = 15.0 \cdot (v_x^2 + v_y^2) + 20.0 \cdot \sqrt{v_x^2 + v_y^2}$
+- **Lateral Skid Shear Damage:** $D_{\text{shear}} = 25.0 \cdot |v_x|$
+- **Asymmetric Attitude Damage:** $D_{\text{attitude}} = 18.0 \cdot |\theta|$
+
+### 4-Tier Terminal Touchdown Scoring
+At touchdown, the terminal bonus prioritizes vehicle survival at a 3:1 ratio over pure coordinate centering:
+- **Structural Softness Score (up to $+70\text{ pts}$):** $\max(0, 70 - 250\,v_{\text{impact}} - 400\,v_{\text{impact}}^2)$
+- **Level Attitude Touchdown Score (up to $+40\text{ pts}$):** $\max(0, 40 \cdot (1 - |\theta| / 0.12))$
+- **Lateral Skid Cancellation Score (up to $+35\text{ pts}$):** $\max(0, 35 \cdot (1 - |v_x| / 0.08))$
+- **Bullseye Centering Score (up to $+45\text{ pts}$):** $\max(0, 45 \cdot (1 - |x| / 0.22))$
+- **Base Safe Landing Bonus:** $+40\text{ pts}$ (or $-100\text{ pts}$ penalty for landing outside flags)
+
+### Gear Stress Classification
+- 🟢 **NOMINAL (< 3% strain):** Feather-light contact, zero post-landing maintenance required.
+- 🟡 **MODERATE (3% – 12% strain):** Minor strut compression, structural margins intact.
+- 🔴 **HIGH STRESS (> 12% strain):** Risk of joint deformation or foot-pad shear failure.
 
 ---
 
 ## 🏗️ 5-Subsystem Aerospace Avionics Suite
 
-LunarPilot integrates 5 aerospace-grade GNC (Guidance, Navigation & Control) subsystems:
+LunarPilot integrates 5 aerospace-grade GNC (Guidance, Navigation & Control) subsystems implemented in [`src/avionics.py`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/avionics.py#L21-L146):
 
-1. **Propellant & Fuel Management System:** Realistic fuel mass consumption tracking and flameout simulation upon exhaustion.
-2. **Sensor Suite & Extended Kalman Filter (EKF):** Generates noisy IMU, radar altimeter, and beacon observations, filtering state estimates via an 8-state EKF estimator.
-3. **Hardware Fault Injection Engine:** Injects mid-flight thruster anomalies (main engine failure, attitude thruster loss, sticky throttle).
-4. **Hazard Detection & Dynamic Divert System:** Scans terrain for boulders and commands divert maneuvers to an alternate landing pad ($x = -0.45$).
-5. **Black Box Flight Data Recorder (FDR):** Logs high-rate trajectory dynamics and generates 6-panel aerospace telemetry plots.
+1. **Propellant & Fuel Management System ([`PropellantSystem`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/fuel_system.py)):** Tracks realistic fuel mass consumption proportional to thruster impulses. Enforces instantaneous engine flameout upon depletion.
+2. **Sensor Suite & Extended Kalman Filter ([`SensorSuite`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/state_estimator.py#L10) & [`ExtendedKalmanFilter`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/state_estimator.py#L35)):** Generates noisy IMU, radar altimeter, and beacon observations, filtering state estimates via an 8-state EKF estimator with dynamic covariance updates.
+3. **Hardware Fault Injection Engine ([`FaultInjector`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/fault_injector.py)):** Simulates mid-flight anomalies (main engine failure, attitude thruster loss, sticky throttle).
+4. **Hazard Detection & Dynamic Divert System ([`HazardDetectionSystem`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/hazard_detection.py)):** Scans terrain for boulders and commands divert maneuvers to an alternate landing pad ($x = -0.45$).
+5. **Black Box Flight Data Recorder ([`BlackBoxRecorder`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/flight_recorder.py)):** Logs high-rate trajectory dynamics and generates 6-panel aerospace telemetry plots.
 
 ---
 
