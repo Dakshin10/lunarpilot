@@ -58,7 +58,7 @@ During deterministic flight evaluation over 10 consecutive test episodes, the po
 The LunarPilot architecture establishes a closed-loop cyber-physical flight system linking realistic Box2D multi-body dynamics, a 5-subsystem avionics stack, a continuous PPO actor-critic network, and a potential-based reward shaping wrapper:
 
 <p align="center">
-  <img src="assets/End-to-End System Architecture.png" alt="End-to-End System Architecture" width="100%" />
+  <img src="assets/End_to_End_System_Architecture.png" alt="End-to-End System Architecture" width="100%" />
 </p>
 
 ```mermaid
@@ -124,7 +124,7 @@ flowchart TD
 
 ## 🚀 Autonomous Flight Guidance Stages
 
-LunarPilot executes an autonomous 4-stage descent profile, transitioning systematically from high-altitude alignment down to soft dual-strut contact cutoff:
+LunarPilot executes an autonomous 6-stage descent profile, transitioning systematically from high-altitude spawn and stabilization down to soft dual-strut contact cutoff:
 
 <p align="center">
   <img src="assets/Autonomous Flight Guidance Stages_.png" alt="Autonomous Flight Guidance Stages" width="100%" />
@@ -132,44 +132,52 @@ LunarPilot executes an autonomous 4-stage descent profile, transitioning systema
 
 ```mermaid
 flowchart LR
-    subgraph S1["Stage 1: High-Altitude Alignment"]
-        A1["Altitude y > 0.8 m"]
-        A2["Null Horizontal Drift: vx to 0"]
-        A3["Parabolic Centering: x to x_target"]
-        A1 --> A2 --> A3
+    subgraph S1["1. Spawn & Insertion"]
+        A1["Altitude y approx 1.4"]
+        A2["Random lateral push"]
+        A1 --> A2
     end
 
-    subgraph S2["Stage 2: Powered Flare Descent"]
-        B1["Altitude 0.3 m < y <= 0.8 m"]
-        B2["Throttle Modulation: vy approx -0.3 m/s"]
-        B3["Attitude Stabilization: |θ| < 5 deg"]
-        B1 --> B2 --> B3
+    subgraph S2["2. High-Altitude Stabilization"]
+        B1["Dampen initial angular spin"]
+        B2["Stabilize pitch attitude"]
+        B1 --> B2
     end
 
-    subgraph S3["Stage 3: Precision Terminal Centering"]
-        C1["Altitude 0.05 m < y <= 0.3 m"]
-        C2["Decelerate Sink Rate: |vy| < 0.1 m/s"]
-        C3["Zero Lateral Skid: vx to 0.0 m/s"]
-        C4["Wings-Level Alignment: θ to 0.0 deg"]
-        C1 --> C2 --> C3 --> C4
+    subgraph S3["3. Lateral Vectoring"]
+        C1["Continuous potential gradient"]
+        C2["Pulling to pad center x = 0"]
+        C1 --> C2
     end
 
-    subgraph S4["Stage 4: Touchdown and Engine Cutoff"]
-        D1["Dual-Leg Ground Contact"]
-        D2["Instantaneous Main and RCS Cutoff"]
-        D3["Structural Integrity Verification"]
-        D4["Pristine Landing Recorded"]
-        D1 --> D2 --> D3 --> D4
+    subgraph S4["4. Powered Flare & Deceleration"]
+        D1["Main engine throttling"]
+        D2["Brake sink rate vy to -0.05 m/s"]
+        D1 --> D2
     end
 
-    S1 --> S2 --> S3 --> S4
+    subgraph S5["5. Dual-Leg Surface Contact"]
+        E1["Left Leg = 1.0, Right Leg = 1.0"]
+        E2["Flat helipad landing"]
+        E1 --> E2
+    end
+
+    subgraph S6["6. Contact-Light Cutoff"]
+        F1["Instantaneous thruster kill"]
+        F2["Mission Solved: +330+ pts"]
+        F1 --> F2
+    end
+
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6
 ```
 
 ### Guidance Phase Details
-- **Stage 1 — High-Altitude Alignment ($y > 0.8\text{ m}$):** Focuses on nulling high lateral drift velocities ($v_x$) and banking the spacecraft toward the primary landing coordinates ($x = 0.00$) before committing to vertical descent.
-- **Stage 2 — Powered Flare Descent ($0.3\text{ m} < y \le 0.8\text{ m}$):** Modulates main engine throttle to establish a constant, stable sink rate ($v_y \approx -0.3\text{ m/s}$), keeping pitch within $|\theta| \le 5^\circ$ while shedding kinetic energy.
-- **Stage 3 — Terminal Precision Centering ($0.05\text{ m} < y \le 0.3\text{ m}$):** Flattens spacecraft attitude ($\theta \to 0^\circ$), cancels lateral ground skid ($v_x \to 0.0\text{ m/s}$), and cushions descent speed below $0.1\text{ m/s}$.
-- **Stage 4 — Touchdown & Engine Cutoff ($y \le 0.05\text{ m}$ / Ground Contact):** Triggers instantaneous main engine and RCS thruster shutdown upon dual-leg contact. Prevents thruster-induced bouncing, rollover torque, or structural joint overload.
+1. **Stage 1 — Spawn & Insertion ($y \approx 1.4$):** Vehicle spawns at high altitude with random initial velocity and angular momentum dispersions.
+2. **Stage 2 — High-Altitude Stabilization:** Side RCS thrusters fire differentially to null initial spin ($\omega \to 0$) and establish a level vertical pitch attitude ($\theta \to 0^\circ$).
+3. **Stage 3 — Lateral Vectoring ($x \to 0.00$):** Continuous potential gradient well ($\Phi_{\text{horiz}} = -35|x| - 75x^2$) pulls the lander aggressively toward the central landing coordinates.
+4. **Stage 4 — Powered Flare & Deceleration ($y \le 0.3\text{ m}$):** Throttle modulates to brake sink rate ($v_y \to -0.05\text{ m/s}$), eliminate lateral ground drift ($v_x \to 0.0\text{ m/s}$), and maintain level wings ($\theta \to 0.0^\circ$).
+5. **Stage 5 — Dual-Leg Surface Contact ($l_1 = 1.0, l_2 = 1.0$):** Simultaneous contact of left and right landing struts on the designated landing pad surface.
+6. **Stage 6 — Contact-Light Engine Cutoff:** Immediate thruster shutdown on confirmed dual-leg contact. Eliminates thruster chatter, prevents post-touchdown bounce, and locks in the **+330+ pts** mission score.
 
 ---
 
