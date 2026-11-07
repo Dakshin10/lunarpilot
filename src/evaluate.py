@@ -1,3 +1,4 @@
+import argparse
 import sys
 from pathlib import Path
 
@@ -7,6 +8,38 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 import numpy as np
 from stable_baselines3 import PPO
 from src.environment import make_env
+
+parser = argparse.ArgumentParser(description="Evaluate LunarPilot autonomous agent.")
+parser.add_argument(
+    "--scale",
+    type=float,
+    default=2.0,
+    help="Display window scale factor (default: 2.0 = 1200x800)",
+)
+parser.add_argument(
+    "--width",
+    type=int,
+    default=None,
+    help="Custom window width in pixels (e.g. 1200, 1600)",
+)
+parser.add_argument(
+    "--height",
+    type=int,
+    default=None,
+    help="Custom window height in pixels (e.g. 800, 1000)",
+)
+parser.add_argument(
+    "--no-hud",
+    action="store_true",
+    help="Disable the real-time avionics telemetry HUD banner",
+)
+parser.add_argument(
+    "--episodes",
+    type=int,
+    default=10,
+    help="Number of flight test episodes (default: 10)",
+)
+args, _ = parser.parse_known_args()
 
 # Determine model to load (prefer continuous model if trained)
 continuous_model_path = Path("models/lunarpilot_ppo_continuous.zip")
@@ -23,7 +56,7 @@ elif discrete_model_path.exists():
 else:
     raise FileNotFoundError("No trained model found in models/ directory!")
 
-# Initialize with the Full 5-Subsystem Avionics Suite
+# Initialize with the Full 5-Subsystem Avionics Suite and Resizable High-Res Display
 env = make_env(
     render_mode="human",
     continuous=continuous,
@@ -32,10 +65,14 @@ env = make_env(
     initial_fuel=100.0,
     enable_ekf_sensors=True,
     enable_black_box=True,
+    window_scale=args.scale,
+    window_width=args.width,
+    window_height=args.height,
+    enable_hud=not args.no_hud,
 )
 model = PPO.load(model_path)
 
-num_episodes = 10
+num_episodes = args.episodes
 flight_history = []
 
 print(f"\n🚀 Commencing Avionics Flight Test ({num_episodes} Episodes)...")
@@ -57,6 +94,13 @@ for episode in range(num_episodes):
         observation, reward, terminated, truncated, info = env.step(action)
         total_reward += reward
         step_count += 1
+
+        if getattr(env, "should_exit", False):
+            break
+
+    if getattr(env, "should_exit", False):
+        print("\n🛑 Flight test session terminated by user.")
+        break
 
     # Retrieve true state from avionics suite for accurate post-flight telemetry
     if hasattr(env, "last_true_state"):

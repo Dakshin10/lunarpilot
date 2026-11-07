@@ -61,57 +61,7 @@ The LunarPilot architecture establishes a closed-loop cyber-physical flight syst
   <img src="assets/End_to_End_System_Architecture.png" alt="End-to-End System Architecture" width="100%" />
 </p>
 
-```mermaid
-flowchart TD
-    subgraph Env["Simulation Environment"]
-        B2D["Box2D Dynamics Engine: LunarLanderContinuous-v3"]
-        Physics["True Kinematic State: x, y, vx, vy, θ, ω, leg_L, leg_R"]
-        B2D --> Physics
-    end
 
-    subgraph Avionics["Avionics & Sensor Suite (src/avionics.py)"]
-        Sensors["Sensor Suite: IMU, Radar Altimeter, Beacon"]
-        EKF["Extended Kalman Filter: 8-State Estimator"]
-        Hazard["Hazard Detection: LIDAR and Retargeting"]
-        Faults["Hardware Fault Injector: Thruster Anomalies"]
-        Fuel["Propellant Management: Mass Burn and Flameout"]
-        FDR["Flight Data Recorder: Black Box Telemetry"]
-        
-        Physics --> Sensors
-        Sensors --> EKF
-        EKF --> Hazard
-    end
-
-    subgraph Policy["Guidance & Control (Stable-Baselines3 PPO)"]
-        Obs["Filtered State Observation: s_t in R8"]
-        Actor["PPO Actor-Critic Network: 2x64 MLP"]
-        Action["Continuous Control Action: Throttle and RCS"]
-        
-        Hazard --> Obs
-        Obs --> Actor
-        Actor --> Action
-    end
-
-    Action --> Faults
-    Faults --> Fuel
-    Fuel -->|"Actuator Commands (u1, u2)"| B2D
-    Physics -.-> FDR
-    Action -.-> FDR
-
-    subgraph Shaping["Reward & Vehicle Health (src/reward_shaping.py)"]
-        PBRS["Potential-Based Reward Shaping: ΔΦ = Φ(s_t+1) - Φ(s_t)"]
-        Gated["Gated Vertical Descent Potential"]
-        Well["Parabolic Centering Well: -35|x| - 75x²"]
-        Terminal["4-Tier Structural Health Terminal Bonus"]
-        
-        Physics --> PBRS
-        PBRS --> Gated
-        Gated --> Well
-        Well --> Terminal
-    end
-
-    Terminal -->|"Shaped Reward (r_t)"| Actor
-```
 
 ### Architectural Dataflow Breakdown
 1. **Sensors & Estimation:** The [`SensorSuite`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/state_estimator.py#L10) injects realistic Gaussian noise into the true kinematic state. An 8-state [`ExtendedKalmanFilter`](file:///d:/Dakshin_learn/Personal_Projects/lunarpilot/src/state_estimator.py#L35) computes filtered state estimations with dynamic covariance updates.
@@ -130,46 +80,6 @@ LunarPilot executes an autonomous 6-stage descent profile, transitioning systema
   <img src="assets/Autonomous Flight Guidance Stages_.png" alt="Autonomous Flight Guidance Stages" width="100%" />
 </p>
 
-```mermaid
-flowchart LR
-    subgraph S1["1. Spawn & Insertion"]
-        A1["Altitude y approx 1.4"]
-        A2["Random lateral push"]
-        A1 --> A2
-    end
-
-    subgraph S2["2. High-Altitude Stabilization"]
-        B1["Dampen initial angular spin"]
-        B2["Stabilize pitch attitude"]
-        B1 --> B2
-    end
-
-    subgraph S3["3. Lateral Vectoring"]
-        C1["Continuous potential gradient"]
-        C2["Pulling to pad center x = 0"]
-        C1 --> C2
-    end
-
-    subgraph S4["4. Powered Flare & Deceleration"]
-        D1["Main engine throttling"]
-        D2["Brake sink rate vy to -0.05 m/s"]
-        D1 --> D2
-    end
-
-    subgraph S5["5. Dual-Leg Surface Contact"]
-        E1["Left Leg = 1.0, Right Leg = 1.0"]
-        E2["Flat helipad landing"]
-        E1 --> E2
-    end
-
-    subgraph S6["6. Contact-Light Cutoff"]
-        F1["Instantaneous thruster kill"]
-        F2["Mission Solved: +330+ pts"]
-        F1 --> F2
-    end
-
-    S1 --> S2 --> S3 --> S4 --> S5 --> S6
-```
 
 ### Guidance Phase Details
 1. **Stage 1 — Spawn & Insertion ($y \approx 1.4$):** Vehicle spawns at high altitude with random initial velocity and angular momentum dispersions.
@@ -189,24 +99,7 @@ Standard reinforcement learning agents trained in `LunarLanderContinuous-v3` fre
   <img src="assets/Reward Shaping & Solving Classic RL Traps.png" alt="Reward Shaping & Solving Classic RL Traps" width="100%" />
 </p>
 
-```mermaid
-flowchart TD
-    subgraph Traps["Classic RL Lunar Lander Traps"]
-        T1["The 'Hoverer' Trap: Burning fuel indefinitely to farm step rewards"]
-        T2["The 'Hill Landing' Exploit: Landing on perimeter hills to avoid pad descent"]
-        T3["The 'Crash Centering' Exploit: Reckless dive into pad with severe impact"]
-    end
 
-    subgraph Solutions["LunarPilot PBRS and Health Solutions"]
-        F1["Telescoping PBRS Potential: ΔΦ = Φ(s') - Φ(s), zero reward for hovering"]
-        F2["Gated Descent Potential: Descent reward suppressed unless centered over pad"]
-        F3["4-Tier Health Evaluator: +70 softness, +40 level, +35 anti-skid, +45 bullseye"]
-    end
-
-    T1 ==>|"Eliminated By"| F1
-    T2 ==>|"Eliminated By"| F2
-    T3 ==>|"Eliminated By"| F3
-```
 
 ### Mathematical Potential Formulation
 The per-step shaping reward $F(s, a, s')$ obeys telescoping potential differences:
