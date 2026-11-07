@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <filter id="shadow-fdr" x="-20%" y="-20%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#431407" flood-opacity="0.6"/>
+    </filter>
+    <!-- International Rescue Orange 3D Cylinder/Cube -->
+    <linearGradient id="fdrOrange" x1="16" y1="14" x2="48" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffedd5"/>
+      <stop offset="25%" stop-color="#ea580c"/>
+      <stop offset="80%" stop-color="#c2410c"/>
+      <stop offset="100%" stop-color="#7c2d12"/>
+    </linearGradient>
+    <linearGradient id="fdrBevel" x1="32" y1="14" x2="32" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="steelBand" x1="12" y1="20" x2="52" y2="40" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#94a3b8"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 3D Crashproof Housing -->
+  <rect x="12" y="16" width="40" height="34" rx="8" fill="url(#fdrOrange)" filter="url(#shadow-fdr)"/>
+  <!-- Top Specular Highlight -->
+  <rect x="14" y="18" width="36" height="14" rx="6" fill="url(#fdrBevel)"/>
+
+  <!-- Reinforced Steel Clamping Bands -->
+  <rect x="18" y="16" width="5" height="34" fill="url(#steelBand)"/>
+  <rect x="41" y="16" width="5" height="34" fill="url(#steelBand)"/>
+
+  <!-- High-Rate Data Screen Display / Waveform -->
+  <rect x="25" y="24" width="14" height="18" rx="2" fill="#0f172a" stroke="#fdba74" stroke-width="0.8"/>
+  <polyline points="26,34 28,34 30,28 32,38 34,30 36,34 38,34" stroke="#00f5d4" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Cylindrical Acoustic Beacon / Sensor (Top Right) -->
+  <rect x="44" y="8" width="6" height="9" rx="2" fill="url(#steelBand)" filter="url(#shadow-fdr)"/>
+  <ellipse cx="47" cy="8" rx="3" ry="1.5" fill="#e2e8f0"/>
+  <!-- Beacon Signal Pulse Rings -->
+  <circle cx="47" cy="8" r="4" stroke="#38bdf8" stroke-width="0.8" opacity="0.8"/>
+  <circle cx="47" cy="8" r="7" stroke="#38bdf8" stroke-width="0.5" opacity="0.4"/>
+
+  <!-- Reflective Identification Strip -->
+  <rect x="12" y="44" width="40" height="3" fill="#ffffff" opacity="0.9"/>
+  <text x="32" y="46.5" font-family="monospace" font-size="2.2" font-weight="bold" fill="#7c2d12" text-anchor="middle">FLIGHT RECORDER</text>
+</svg>

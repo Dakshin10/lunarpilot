@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <!-- Soft 3D Drop Shadow -->
+    <filter id="shadow-demo" x="-20%" y="-20%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#001830" flood-opacity="0.5"/>
+    </filter>
+    <!-- Exterior Shell Gradient -->
+    <linearGradient id="bodyGrad-demo" x1="12" y1="8" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4facfe"/>
+      <stop offset="50%" stop-color="#0066eb"/>
+      <stop offset="100%" stop-color="#00358a"/>
+    </linearGradient>
+    <!-- Top Highlight -->
+    <linearGradient id="highlight-demo" x1="32" y1="12" x2="32" y2="28" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <!-- Lens Gradient -->
+    <radialGradient id="lensGrad-demo" cx="32" cy="34" r="16" fx="28" fy="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00f2fe"/>
+      <stop offset="45%" stop-color="#4facfe"/>
+      <stop offset="85%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </radialGradient>
+    <!-- Play Triangle 3D Bevel -->
+    <linearGradient id="playGrad-demo" x1="26" y1="26" x2="42" y2="38" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#cbe5ff"/>
+    </linearGradient>
+    <filter id="glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- 3D Base Body with Beveled Chamfer -->
+  <rect x="8" y="14" width="48" height="36" rx="12" fill="url(#bodyGrad-demo)" filter="url(#shadow-demo)"/>
+  
+  <!-- Top Specular Bevel -->
+  <rect x="9.5" y="15.5" width="45" height="18" rx="10.5" fill="url(#highlight-demo)"/>
+
+  <!-- Top Recording Indicator Light -->
+  <circle cx="18" cy="22" r="3" fill="#ff3366"/>
+  <circle cx="17" cy="21" r="1" fill="#ffffff" opacity="0.8"/>
+  <circle cx="18" cy="22" r="4.5" stroke="#ff3366" stroke-width="0.8" opacity="0.4"/>
+
+  <!-- Central Camera Lens Bezel -->
+  <circle cx="34" cy="32" r="15" fill="#0b132b" stroke="#00d2ff" stroke-width="1.5" filter="url(#glow-cyan)"/>
+  <!-- Lens Glass -->
+  <circle cx="34" cy="32" r="12" fill="url(#lensGrad-demo)"/>
+  
+  <!-- Lens Reflection -->
+  <ellipse cx="31" cy="28" rx="5" ry="2.5" transform="rotate(-30 31 28)" fill="#ffffff" opacity="0.5"/>
+
+  <!-- 3D Play Glyph -->
+  <polygon points="30,26 42,32 30,38" fill="url(#playGrad-demo)" filter="url(#shadow-demo)"/>
+</svg>
